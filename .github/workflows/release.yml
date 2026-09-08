@@ -1,0 +1,116 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without the v prefix (must match VERSION)
+        required: true
+        type: string
+      prerelease:
+        description: Mark the GitHub release as a prerelease
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  darwin-arm64:
+    name: Sign, notarize, test, and publish
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: runtime/package-lock.json
+      - name: Validate release request
+        env:
+          P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+          CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(tr -d '[:space:]' < VERSION)" = "$RELEASE_VERSION"
+          git rev-parse "v$RELEASE_VERSION" >/dev/null 2>&1 && { echo "Tag already exists" >&2; exit 1; } || true
+          for value in "$P12_BASE64" "$P12_PASSWORD" "$CODESIGN_IDENTITY" "$APPLE_ID" "$APPLE_APP_PASSWORD" "$APPLE_TEAM_ID"; do
+            test -n "$value" || { echo "A required Apple signing secret is missing" >&2; exit 1; }
+          done
+      - name: Install and validate source dependencies
+        run: make install-dev && make check && make test
+      - name: Import Developer ID certificate
+        env:
+          P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+        run: |
+          security create-keychain -p temporary "$RUNNER_TEMP/open-computer-use.keychain-db"
+          security default-keychain -s "$RUNNER_TEMP/open-computer-use.keychain-db"
+          security unlock-keychain -p temporary "$RUNNER_TEMP/open-computer-use.keychain-db"
+          printf '%s' "$P12_BASE64" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$RUNNER_TEMP/open-computer-use.keychain-db" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k temporary "$RUNNER_TEMP/open-computer-use.keychain-db"
+      - name: Build patched driver
+        env:
+          APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
+          CUA_DRIVER_OUTPUT: ${{ runner.temp }}/OpenComputerUseDriver.app
+          OCU_VERSION: ${{ inputs.version }}
+        run: packaging/build-driver.sh
+      - name: Notarize and staple driver
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          ditto -c -k --keepParent "$RUNNER_TEMP/OpenComputerUseDriver.app" "$RUNNER_TEMP/driver.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/driver.zip" --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+          xcrun stapler staple "$RUNNER_TEMP/OpenComputerUseDriver.app"
+          codesign --verify --deep --strict "$RUNNER_TEMP/OpenComputerUseDriver.app"
+          spctl --assess --type execute "$RUNNER_TEMP/OpenComputerUseDriver.app"
+      - name: Build self-contained release
+        env:
+          OCU_VERSION: ${{ inputs.version }}
+          CUA_DRIVER_APP_SOURCE: ${{ runner.temp }}/OpenComputerUseDriver.app
+        run: packaging/build-release.sh
+      - name: Test isolated installation
+        run: |
+          mkdir "$RUNNER_TEMP/extracted"
+          tar -xzf "dist/open-computer-use-$RELEASE_VERSION-darwin-arm64.tar.gz" -C "$RUNNER_TEMP/extracted"
+          OCU_TEST_BUNDLE="$RUNNER_TEMP/extracted/open-computer-use-$RELEASE_VERSION" scripts/test-install.sh
+      - name: Render and commit Homebrew formula
+        env:
+          OCU_VERSION: ${{ inputs.version }}
+          OCU_REPOSITORY: ${{ github.repository }}
+        run: |
+          packaging/render-formula.sh
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add Formula/open-computer-use.rb
+          git commit -m "brew: update formula for $RELEASE_VERSION"
+          git push origin HEAD:main
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease_flag=()
+          if [ "${{ inputs.prerelease }}" = true ]; then prerelease_flag=(--prerelease); fi
+          gh release create "v$RELEASE_VERSION" dist/* --target main --generate-notes "${prerelease_flag[@]}"
+      - name: Remove temporary signing material
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/certificate.p12" "$RUNNER_TEMP/driver.zip"
+          security delete-keychain "$RUNNER_TEMP/open-computer-use.keychain-db" >/dev/null 2>&1 || true

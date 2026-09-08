@@ -1,0 +1,12 @@
+.DS_Store
+dist/
+work/
+runtime/node_modules/
+**/__pycache__/
+.env
+*.log
+*.har
+*.cpuprofile
+*.heapsnapshot
+*.trace.json
+*.trace.json.gz

@@ -1,0 +1,27 @@
+{
+  "name": "open-computer-use",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Persistent parallel inactive-tab runtime for Claude Code in the existing Chrome user profile",
+  "bin": {
+    "open-computer-use": "./server.mjs"
+  },
+  "scripts": {
+    "check": "node --check server.mjs",
+    "smoke": "CLAUDE_CUA_BROWSER_MODE=headless node test/smoke.mjs",
+    "test:live-browser": "node test/live-browser.mjs",
+    "test:live-browser-headless": "CLAUDE_CUA_BROWSER_MODE=headless node test/live-browser.mjs",
+    "test:http-browser": "node test/http-browser.mjs",
+    "test:http-devtools-stress": "node test/http-devtools-stress.mjs",
+    "test:devtools": "CLAUDE_CUA_BROWSER_MODE=headless node test/devtools.mjs",
+    "test:resilience": "CLAUDE_CUA_BROWSER_MODE=headless node test/resilience.mjs",
+    "test:preview": "CLAUDE_CUA_BROWSER_MODE=headless node test/preview.mjs",
+    "test:preview-viewer": "node test/preview-viewer.mjs",
+    "test:live-native": "node test/live-native.mjs",
+    "test:teardown": "CLAUDE_CUA_BROWSER_MODE=headless node test/teardown.mjs"
+  },
+  "dependencies": {
+    "acorn": "8.15.0",
+    "playwright": "1.57.0"
+  }
+}

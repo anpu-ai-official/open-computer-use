@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.anpu.open-computer-use.browser-broker</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>@@NODE@@</string>
+    <string>@@RUNTIME@@/http-server.mjs</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>CLAUDE_CUA_DRIVER</key>
+    <string>@@DRIVER@@</string>
+    <key>CLAUDE_CUA_DRIVER_APP</key>
+    <string>@@DRIVER_APP@@</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>StandardOutPath</key>
+  <string>@@LOG_DIR@@/browser-broker.log</string>
+  <key>StandardErrorPath</key>
+  <string>@@LOG_DIR@@/browser-broker.log</string>
+</dict>
+</plist>

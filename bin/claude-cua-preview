@@ -1,0 +1,14 @@
+#!/bin/bash
+set -u
+source_path="${BASH_SOURCE[0]}"
+while [ -h "$source_path" ]; do
+  source_dir="$(cd -P "$(dirname "$source_path")" && pwd)"
+  source_path="$(readlink "$source_path")"
+  case "$source_path" in /*) ;; *) source_path="$source_dir/$source_path" ;; esac
+done
+bundle_root="$(cd "$(dirname "$source_path")/.." && pwd)"
+driver_app="${OCU_APPLICATIONS_DIR:-$HOME/Applications}/OpenComputerUseDriver.app"
+driver_executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$driver_app/Contents/Info.plist" 2>/dev/null || printf cua-driver)"
+export CLAUDE_CUA_PREVIEW_CLI="${CLAUDE_CUA_PREVIEW_CLI:-$bundle_root/bin/claude-cua-preview}"
+export CLAUDE_CUA_DRIVER="${CLAUDE_CUA_DRIVER:-$driver_app/Contents/MacOS/$driver_executable}"
+exec "$bundle_root/libexec/node/bin/node" "$bundle_root/runtime/iterm-preview.mjs" "$@"

@@ -1,0 +1,420 @@
+#!/bin/bash
+set -euo pipefail
+
+VERSION="0.1.0"
+SERVICE_LABEL="ai.anpu.open-computer-use.browser-broker"
+MCP_NAME="open-computer-use"
+MCP_URL="${OCU_MCP_URL:-http://127.0.0.1:17840/mcp}"
+
+resolve_script() {
+  local source="${BASH_SOURCE[0]}" directory
+  while [ -h "$source" ]; do
+    directory="$(cd -P "$(dirname "$source")" >/dev/null 2>&1 && pwd)"
+    source="$(readlink "$source")"
+    case "$source" in /*) ;; *) source="$directory/$source" ;; esac
+  done
+  cd -P "$(dirname "$source")" >/dev/null 2>&1 && printf '%s/%s\n' "$PWD" "$(basename "$source")"
+}
+
+SELF="$(resolve_script)"
+BUNDLE_ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
+INSTALL_ROOT="${OCU_INSTALL_ROOT:-$HOME/Library/Application Support/OpenComputerUse}"
+CLAUDE_HOME_DIR="${OCU_CLAUDE_HOME:-$HOME/.claude}"
+APPLICATIONS_DIR="${OCU_APPLICATIONS_DIR:-$HOME/Applications}"
+LAUNCH_AGENTS_DIR="${OCU_LAUNCH_AGENTS_DIR:-$HOME/Library/LaunchAgents}"
+BIN_DIR="${OCU_BIN_DIR:-$HOME/.local/bin}"
+STATE_DIR="$INSTALL_ROOT/state"
+LOG_DIR="${OCU_LOG_DIR:-$HOME/Library/Logs/OpenComputerUse}"
+DRIVER_APP="$APPLICATIONS_DIR/OpenComputerUseDriver.app"
+LAUNCH_PLIST="$LAUNCH_AGENTS_DIR/$SERVICE_LABEL.plist"
+
+say() { printf '%s\n' "$*"; }
+ok() { printf '  ✓ %s\n' "$*"; }
+warn() { printf '  ! %s\n' "$*"; }
+fail() { printf '  ✗ %s\n' "$*" >&2; }
+die() { fail "$*"; exit 1; }
+
+require_platform() {
+  [ "$(uname -s)" = "Darwin" ] || die "Only macOS is supported in this release."
+  [ "$(uname -m)" = "arm64" ] || die "Only Apple-silicon Macs are supported in this release."
+}
+
+bundle_node() {
+  if [ -x "$BUNDLE_ROOT/libexec/node/bin/node" ]; then
+    printf '%s\n' "$BUNDLE_ROOT/libexec/node/bin/node"
+  elif command -v node >/dev/null 2>&1; then
+    command -v node
+  else
+    return 1
+  fi
+}
+
+driver_binary() {
+  local app="${1:-$DRIVER_APP}" executable
+  [ -f "$app/Contents/Info.plist" ] || return 1
+  executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist" 2>/dev/null)" || return 1
+  [ -x "$app/Contents/MacOS/$executable" ] || return 1
+  printf '%s\n' "$app/Contents/MacOS/$executable"
+}
+
+backup_existing() {
+  local target="$1" relative="$2" stamp backup
+  [ -e "$target" ] || [ -L "$target" ] || return 0
+  stamp="$(date +%Y%m%d-%H%M%S)"
+  backup="$CLAUDE_HOME_DIR/backups/open-computer-use-$stamp/$relative"
+  mkdir -p "$(dirname "$backup")"
+  mv "$target" "$backup"
+  warn "Backed up existing $target to $backup"
+}
+
+install_link() {
+  local source="$1" target="$2"
+  mkdir -p "$(dirname "$target")"
+  if [ -L "$target" ] && [ "$(readlink "$target")" = "$source" ]; then return 0; fi
+  if [ -e "$target" ] || [ -L "$target" ]; then
+    mv "$target" "$target.before-open-computer-use-$(date +%Y%m%d-%H%M%S)"
+  fi
+  ln -s "$source" "$target"
+}
+
+ensure_command_path() {
+  [ "${OCU_SKIP_PATH:-0}" = "1" ] && return 0
+  [ "$BIN_DIR" = "$HOME/.local/bin" ] || { warn "Add $BIN_DIR to PATH manually."; return 0; }
+  case ":$PATH:" in *":$BIN_DIR:"*) return 0 ;; esac
+  local profile
+  case "${SHELL:-/bin/zsh}" in */bash) profile="$HOME/.bash_profile" ;; *) profile="${ZDOTDIR:-$HOME}/.zprofile" ;; esac
+  if ! grep -q '# open-computer-use path' "$profile" 2>/dev/null; then
+    printf "\n# open-computer-use path\nexport PATH=\"\$HOME/.local/bin:\$PATH\"\n" >> "$profile"
+    warn "Added ~/.local/bin to $profile; new terminal sessions will pick it up."
+  fi
+}
+
+render_launch_agent() {
+  local node driver template temporary
+  node="$(bundle_node)" || die "Bundled Node runtime is missing."
+  driver="$(driver_binary)" || die "Bundled driver installation is incomplete."
+  template="$BUNDLE_ROOT/share/launchd/$SERVICE_LABEL.plist.in"
+  temporary="$LAUNCH_PLIST.partial.$$"
+  mkdir -p "$LAUNCH_AGENTS_DIR" "$LOG_DIR"
+  OCU_TEMPLATE="$template" OCU_OUTPUT="$temporary" OCU_NODE_PATH="$node" \
+    OCU_RUNTIME_PATH="$BUNDLE_ROOT/runtime" OCU_DRIVER_PATH="$driver" \
+    OCU_DRIVER_APP_PATH="$DRIVER_APP" OCU_LOG_PATH="$LOG_DIR" \
+    "$node" -e '
+      const fs = require("node:fs");
+      const escapeXml = value => value.replace(/[&<>"]/g, character => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[character]));
+      let text = fs.readFileSync(process.env.OCU_TEMPLATE, "utf8");
+      for (const [token, name] of [["@@NODE@@","OCU_NODE_PATH"],["@@RUNTIME@@","OCU_RUNTIME_PATH"],["@@DRIVER@@","OCU_DRIVER_PATH"],["@@DRIVER_APP@@","OCU_DRIVER_APP_PATH"],["@@LOG_DIR@@","OCU_LOG_PATH"]]) text = text.replaceAll(token, escapeXml(process.env[name]));
+      fs.writeFileSync(process.env.OCU_OUTPUT, text, {mode: 0o600});
+    '
+  plutil -lint "$temporary" >/dev/null
+  mv "$temporary" "$LAUNCH_PLIST"
+}
+
+load_service() {
+  [ "${OCU_SKIP_LAUNCHD:-0}" = "1" ] && return 0
+  launchctl bootout "gui/$UID/$SERVICE_LABEL" >/dev/null 2>&1 || true
+  local listener
+  listener=""
+  for _ in {1..20}; do
+    listener="$(/usr/sbin/lsof -nP -iTCP:17840 -sTCP:LISTEN -t 2>/dev/null | head -1 || true)"
+    [ -n "$listener" ] || break
+    sleep 0.1
+  done
+  [ -z "$listener" ] || die "Port 17840 is already owned by PID $listener after stopping managed services; refusing to hide an unrelated or stale broker."
+  launchctl bootstrap "gui/$UID" "$LAUNCH_PLIST"
+  launchctl kickstart -k "gui/$UID/$SERVICE_LABEL"
+}
+
+migrate_legacy_service() {
+  [ "${OCU_SKIP_LAUNCHD:-0}" = "1" ] && return 0
+  local legacy_label legacy_plist
+  for legacy_label in com.claude.cua-repl io.github.claude-computer-use.browser-broker; do
+    legacy_plist="$LAUNCH_AGENTS_DIR/$legacy_label.plist"
+    launchctl bootout "gui/$UID/$legacy_label" >/dev/null 2>&1 || true
+    if [ -f "$legacy_plist" ]; then
+      mkdir -p "$STATE_DIR"
+      mv "$legacy_plist" "$STATE_DIR/$legacy_label.plist.migrated-$(date +%Y%m%d-%H%M%S)-$$"
+      warn "Migrated the legacy $legacy_label LaunchAgent"
+    fi
+  done
+}
+
+install_integrations() {
+  local skill_target agent source name
+  mkdir -p "$CLAUDE_HOME_DIR/skills" "$CLAUDE_HOME_DIR/agents" "$STATE_DIR"
+  skill_target="$CLAUDE_HOME_DIR/skills/computer-use"
+  if [ ! -f "$skill_target/.open-computer-use-managed" ] && [ ! -f "$skill_target/.claude-computer-use-managed" ]; then
+    backup_existing "$skill_target" "skills/computer-use"
+  else
+    mv "$skill_target" "$skill_target.previous.$$"
+  fi
+  /usr/bin/ditto "$BUNDLE_ROOT/share/claude/skills/computer-use" "$skill_target"
+  : > "$skill_target/.open-computer-use-managed"
+  [ ! -d "$skill_target.previous.$$" ] || mv "$skill_target.previous.$$" "$STATE_DIR/previous-skill-$(date +%Y%m%d-%H%M%S)-$$"
+
+  for source in "$BUNDLE_ROOT"/share/claude/agents/*.md; do
+    name="$(basename "$source")"
+    agent="$CLAUDE_HOME_DIR/agents/$name"
+    if [ -e "$agent" ] && ! cmp -s "$source" "$agent"; then backup_existing "$agent" "agents/$name"; fi
+    cp "$source" "$agent"
+  done
+  ok "Installed the Claude Code skill and isolated operators"
+}
+
+install_driver() {
+  local bundled="$BUNDLE_ROOT/libexec/driver/OpenComputerUseDriver.app" existing
+  [ -d "$bundled" ] || die "Release bundle is missing OpenComputerUseDriver.app."
+  mkdir -p "$APPLICATIONS_DIR"
+  if [ -d "$APPLICATIONS_DIR/ClaudeComputerUseDriver.app" ]; then
+    existing="$(driver_binary "$APPLICATIONS_DIR/ClaudeComputerUseDriver.app" 2>/dev/null || true)"
+    [ -z "$existing" ] || "$existing" stop >/dev/null 2>&1 || true
+    mv "$APPLICATIONS_DIR/ClaudeComputerUseDriver.app" "$STATE_DIR/ClaudeComputerUseDriver.migrated-$(date +%Y%m%d-%H%M%S)-$$.app"
+  fi
+  if existing="$(driver_binary 2>/dev/null)"; then "$existing" stop >/dev/null 2>&1 || true; fi
+  if [ -d "$DRIVER_APP" ]; then mv "$DRIVER_APP" "$STATE_DIR/driver-previous-$(date +%Y%m%d-%H%M%S)-$$.app"; fi
+  /usr/bin/ditto "$bundled" "$DRIVER_APP"
+  /usr/bin/codesign --verify --deep --strict "$DRIVER_APP" >/dev/null 2>&1 || die "Bundled driver signature verification failed."
+  ok "Installed the background driver in $DRIVER_APP"
+}
+
+register_mcp() {
+  [ "${OCU_SKIP_MCP:-0}" = "1" ] && return 0
+  command -v claude >/dev/null 2>&1 || die "Claude Code CLI is not installed or not on PATH."
+  claude mcp remove --scope user claude-cua-repl >/dev/null 2>&1 || true
+  claude mcp remove --scope user claude-computer-use >/dev/null 2>&1 || true
+  claude mcp remove --scope user "$MCP_NAME" >/dev/null 2>&1 || true
+  claude mcp add --scope user --transport http "$MCP_NAME" "$MCP_URL" >/dev/null
+  ok "Registered the persistent browser runtime with Claude Code"
+}
+
+verify_iterm() {
+  [ "${OCU_SKIP_ITERM:-0}" = "1" ] && return 0
+  [ -d /Applications/iTerm.app ] || die "iTerm2 must be installed in /Applications."
+  ok "Found iTerm2 (the preview uses its built-in AppleScript interface)"
+}
+
+setup_command() {
+  require_platform
+  local skip_permissions=0 non_interactive=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --skip-permissions) skip_permissions=1 ;;
+      --non-interactive) non_interactive=1 ;;
+      *) die "Unknown setup option: $1" ;;
+    esac
+    shift
+  done
+  mkdir -p "$STATE_DIR" "$BIN_DIR"
+  migrate_legacy_service
+  install_driver
+  install_integrations
+  install_link "$BUNDLE_ROOT/bin/open-computer-use" "$BIN_DIR/open-computer-use"
+  install_link "$BUNDLE_ROOT/bin/open-computer-use" "$BIN_DIR/ocu"
+  install_link "$BUNDLE_ROOT/bin/open-computer-use" "$BIN_DIR/claude-computer-use"
+  install_link "$BUNDLE_ROOT/bin/claude-cua-preview" "$BIN_DIR/claude-cua-preview"
+  install_link "$BUNDLE_ROOT/bin/claude-cua-preview" "$BIN_DIR/ocu-preview"
+  ensure_command_path
+  render_launch_agent
+  load_service
+  register_mcp
+  verify_iterm
+  printf '%s\n' "$BUNDLE_ROOT" > "$STATE_DIR/bundle-root"
+  printf '%s\n' "$VERSION" > "$STATE_DIR/version"
+  ok "Installed command links in $BIN_DIR"
+  if [ "$skip_permissions" -eq 0 ] && [ "${OCU_SKIP_PERMISSIONS:-0}" != "1" ]; then
+    if [ "$non_interactive" -eq 1 ] || [ ! -t 0 ]; then
+      warn "Run 'open-computer-use permissions' once to approve macOS capture and accessibility."
+    else
+      permissions_command
+    fi
+  fi
+  say "Setup complete. Run: open-computer-use doctor --deep"
+}
+
+permissions_command() {
+  require_platform
+  local driver status
+  driver="$(driver_binary)" || die "Driver is not installed. Run setup first."
+  status="$("$driver" permissions status --json 2>/dev/null || true)"
+  if printf '%s' "$status" | grep -q '"accessibility"[[:space:]]*:[[:space:]]*true' && \
+     printf '%s' "$status" | grep -q '"screen_recording"[[:space:]]*:[[:space:]]*true'; then
+    ok "Accessibility and Screen Recording are already approved"
+  else
+    say "macOS requires you—not sudo—to approve Accessibility and Screen Recording."
+    say "The driver will open the exact System Settings panes; enable Open Computer Use Driver, then return here."
+    if [ -t 0 ]; then printf 'Press Return to continue… '; read -r _answer; fi
+    "$driver" permissions grant
+  fi
+  if [ -x "$BUNDLE_ROOT/bin/claude-cua-preview" ]; then
+    "$BUNDLE_ROOT/bin/claude-cua-preview" probe >/dev/null 2>&1 || \
+      warn "iTerm2 still needs its one-time Automation approval; it will ask on first preview use."
+  fi
+  if pgrep -x 'Google Chrome' >/dev/null 2>&1; then
+    if warm_browser >/dev/null; then ok "Warmed the one-time Chrome broker handshake"; else warn "Chrome broker warm-up failed; doctor --deep will retry it."; fi
+  else
+    warn "Start Chrome and run doctor --deep once before the first browser task."
+  fi
+}
+
+front_bundle() {
+  local asn
+  asn="$(/usr/bin/lsappinfo front | head -1 | sed 's/:$//')"
+  /usr/bin/lsappinfo info "$asn" 2>/dev/null | sed -n 's/.*bundleID="\([^"]*\)".*/\1/p' | head -1
+}
+
+warm_browser() {
+  local before after response
+  before="$(front_bundle || true)"
+  curl -fsS --max-time 10 -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"doctor","version":"0.1"}}}' "$MCP_URL" >/dev/null
+  curl -fsS --max-time 10 -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"js_reset","arguments":{"session":"doctor_browser"}}}' "$MCP_URL" >/dev/null 2>&1 || true
+  response="$(curl -fsS --max-time 30 -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"js","arguments":{"session":"doctor_browser","surface":"browser","code":"let t=await cua.createBrowserTab(\"chrome\",\"about:blank\",{inspectOnly:true,emitState:false}); await t.playwright.setContent(\"<title>OCU Doctor</title>\"); let title=await t.title(); await t.close(); nodeRepl.write(JSON.stringify({title,owned:(await cua.listTabs({emit:false})).length}));"}}}' "$MCP_URL")"
+  after="$(front_bundle || true)"
+  if [ -n "$before" ] && [ "$after" != "$before" ]; then /usr/bin/open -b "$before"; fi
+  printf '%s' "$response" | grep -q 'OCU Doctor' && printf '%s' "$response" | grep -q 'owned\\":0'
+}
+
+check_line() {
+  local kind="$1" message="$2"
+  case "$kind" in ok) ok "$message" ;; warn) warn "$message" ;; fail) fail "$message"; DOCTOR_FAILURES=$((DOCTOR_FAILURES + 1)) ;; esac
+}
+
+doctor_command() {
+  local repair=0 bundle_only=0 deep=0 driver node response signature_info
+  while [ $# -gt 0 ]; do
+    case "$1" in --repair) repair=1 ;; --bundle-only) bundle_only=1 ;; --deep) deep=1 ;; *) die "Unknown doctor option: $1" ;; esac
+    shift
+  done
+  if [ "$repair" -eq 1 ]; then setup_command --non-interactive --skip-permissions; fi
+  DOCTOR_FAILURES=0
+  say "Open Computer Use doctor $VERSION"
+  if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]; then check_line ok "Apple-silicon macOS"; else check_line fail "Requires Apple-silicon macOS"; fi
+  node="$(bundle_node 2>/dev/null || true)"
+  if [ -n "$node" ] && "$node" --version >/dev/null 2>&1; then check_line ok "Bundled Node runtime"; else check_line fail "Bundled Node runtime missing"; fi
+  if [ -f "$BUNDLE_ROOT/runtime/node_modules/playwright/package.json" ]; then check_line ok "Bundled Playwright"; else check_line fail "Bundled Playwright missing"; fi
+  if [ -x "$BUNDLE_ROOT/bin/claude-cua-preview" ] && [ -f "$BUNDLE_ROOT/runtime/iterm-preview.mjs" ]; then check_line ok "Bundled iTerm preview"; else check_line fail "Bundled iTerm preview missing"; fi
+  if [ -d "$BUNDLE_ROOT/libexec/driver/OpenComputerUseDriver.app" ]; then check_line ok "Bundled native driver"; else check_line fail "Bundled native driver missing"; fi
+  if /usr/bin/codesign --verify --deep --strict "$BUNDLE_ROOT/libexec/driver/OpenComputerUseDriver.app" >/dev/null 2>&1; then check_line ok "Driver code signature is internally valid"; else check_line fail "Driver code signature is invalid"; fi
+  if /usr/sbin/spctl --assess --type execute "$BUNDLE_ROOT/libexec/driver/OpenComputerUseDriver.app" >/dev/null 2>&1; then
+    check_line ok "Driver is accepted by Gatekeeper"
+  else
+    signature_info="$(/usr/bin/codesign -dv --verbose=4 "$BUNDLE_ROOT/libexec/driver/OpenComputerUseDriver.app" 2>&1 || true)"
+    if printf '%s' "$signature_info" | grep -q 'Signature=adhoc'; then
+      check_line warn "Development driver is ad-hoc signed and not notarized"
+    else
+      check_line fail "Driver is not notarized or accepted by Gatekeeper"
+    fi
+  fi
+  if [ "$bundle_only" -eq 1 ]; then [ "$DOCTOR_FAILURES" -eq 0 ]; return; fi
+
+  if command -v claude >/dev/null 2>&1; then check_line ok "Claude Code CLI $(claude --version 2>/dev/null)"; else check_line fail "Claude Code CLI not found"; fi
+  if [ -d /Applications/iTerm.app ]; then check_line ok "iTerm2 installed"; else check_line fail "iTerm2 not installed in /Applications"; fi
+  if [ -d /Applications/Google\ Chrome.app ]; then check_line ok "Google Chrome installed"; else check_line fail "Google Chrome not installed"; fi
+  if [ -f "$CLAUDE_HOME_DIR/skills/computer-use/.open-computer-use-managed" ]; then check_line ok "Claude skill installed"; else check_line fail "Claude skill missing"; fi
+  if [ -f "$CLAUDE_HOME_DIR/agents/gui-operator.md" ] && [ -f "$CLAUDE_HOME_DIR/agents/devtools-operator.md" ]; then check_line ok "Claude operators installed"; else check_line fail "Claude operators missing"; fi
+  if [ -L "$BIN_DIR/open-computer-use" ]; then check_line ok "Command link installed"; else check_line warn "$BIN_DIR is not linked; use the full command path"; fi
+  if launchctl print "gui/$UID/$SERVICE_LABEL" >/dev/null 2>&1; then check_line ok "Browser broker service loaded"; else check_line fail "Browser broker service is not loaded"; fi
+  response="$(curl -fsS --max-time 3 -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"doctor","version":"0.1"}}}' "$MCP_URL" 2>/dev/null || true)"
+  if printf '%s' "$response" | grep -q 'open-computer-use' && printf '%s' "$response" | grep -q '"version":"0.1.0"'; then check_line ok "Browser MCP 0.1.0 responds on 127.0.0.1:17840"; else check_line fail "Browser MCP is absent or stale"; fi
+  if claude mcp get "$MCP_NAME" >/dev/null 2>&1; then check_line ok "Claude Code MCP registration"; else check_line fail "Claude Code MCP registration missing"; fi
+  driver="$(driver_binary 2>/dev/null || true)"
+  if [ -n "$driver" ]; then
+    if "$driver" status >/dev/null 2>&1; then check_line ok "Native driver daemon"; else check_line warn "Native driver daemon will start on first use"; fi
+    response="$("$driver" permissions status --json 2>/dev/null || true)"
+    if printf '%s' "$response" | grep -q '"accessibility"[[:space:]]*:[[:space:]]*true'; then check_line ok "Accessibility approved"; else check_line fail "Accessibility approval missing; run permissions"; fi
+    if printf '%s' "$response" | grep -q '"screen_recording"[[:space:]]*:[[:space:]]*true'; then check_line ok "Screen Recording approved"; else check_line fail "Screen Recording approval missing; run permissions"; fi
+  else
+    check_line fail "Installed driver executable missing"
+  fi
+  if pgrep -x 'Google Chrome' >/dev/null 2>&1; then check_line ok "Chrome is running for existing-profile browser work"; else check_line warn "Start Chrome before browser work"; fi
+  if [ "$deep" -eq 1 ]; then
+    if warm_browser; then check_line ok "Inactive existing-profile browser tab end to end"; else check_line fail "Browser end-to-end probe failed; inspect $LOG_DIR/browser-broker.log"; fi
+    if "$driver" doctor --json >/dev/null 2>&1; then check_line ok "Native driver self-diagnostics"; else check_line fail "Native driver self-diagnostics failed"; fi
+    if "$BUNDLE_ROOT/bin/claude-cua-preview" probe >/dev/null 2>&1; then check_line ok "iTerm2 preview Automation connection"; else check_line fail "iTerm2 preview Automation connection failed"; fi
+  fi
+  if [ "$DOCTOR_FAILURES" -eq 0 ]; then say "Doctor result: ready"; else say "Doctor result: $DOCTOR_FAILURES problem(s)"; fi
+  [ "$DOCTOR_FAILURES" -eq 0 ]
+}
+
+start_command() {
+  local driver
+  driver="$(driver_binary)" || die "Driver is not installed."
+  /usr/bin/open -n -g "$DRIVER_APP" --args serve --grant existing-profile
+  load_service
+  ok "Services started"
+}
+
+stop_command() {
+  local driver
+  launchctl bootout "gui/$UID/$SERVICE_LABEL" >/dev/null 2>&1 || true
+  driver="$(driver_binary 2>/dev/null || true)"
+  [ -z "$driver" ] || "$driver" stop >/dev/null 2>&1 || true
+  ok "Services stopped"
+}
+
+status_command() {
+  local driver
+  if launchctl print "gui/$UID/$SERVICE_LABEL" >/dev/null 2>&1; then ok "Browser broker loaded"; else warn "Browser broker not loaded"; fi
+  driver="$(driver_binary 2>/dev/null || true)"
+  if [ -n "$driver" ]; then "$driver" status; else warn "Driver not installed"; fi
+}
+
+uninstall_command() {
+  local trash direct_install=0
+  stop_command
+  [ "${OCU_SKIP_MCP:-0}" = "1" ] || claude mcp remove --scope user "$MCP_NAME" >/dev/null 2>&1 || true
+  trash="$HOME/.Trash/OpenComputerUse-$(date +%Y%m%d-%H%M%S)"
+  mkdir -p "$trash"
+  if [ -f "$INSTALL_ROOT/install-kind" ] && grep -qx 'direct' "$INSTALL_ROOT/install-kind"; then direct_install=1; fi
+  [ ! -e "$LAUNCH_PLIST" ] || mv "$LAUNCH_PLIST" "$trash/"
+  [ ! -e "$DRIVER_APP" ] || mv "$DRIVER_APP" "$trash/"
+  [ ! -e "$CLAUDE_HOME_DIR/skills/computer-use/.open-computer-use-managed" ] || mv "$CLAUDE_HOME_DIR/skills/computer-use" "$trash/"
+  for name in gui-operator.md devtools-operator.md; do
+    if [ -f "$CLAUDE_HOME_DIR/agents/$name" ] && cmp -s "$BUNDLE_ROOT/share/claude/agents/$name" "$CLAUDE_HOME_DIR/agents/$name"; then
+      mv "$CLAUDE_HOME_DIR/agents/$name" "$trash/"
+    fi
+  done
+  [ ! -L "$BIN_DIR/claude-cua-preview" ] || mv "$BIN_DIR/claude-cua-preview" "$trash/"
+  [ ! -L "$BIN_DIR/ocu-preview" ] || mv "$BIN_DIR/ocu-preview" "$trash/"
+  [ ! -L "$BIN_DIR/ocu" ] || mv "$BIN_DIR/ocu" "$trash/"
+  [ ! -L "$BIN_DIR/claude-computer-use" ] || mv "$BIN_DIR/claude-computer-use" "$trash/"
+  [ ! -L "$BIN_DIR/open-computer-use" ] || mv "$BIN_DIR/open-computer-use" "$trash/"
+  if [ "$direct_install" -eq 1 ] && [ -d "$INSTALL_ROOT" ]; then mv "$INSTALL_ROOT" "$trash/install-root"; fi
+  say "Managed integrations were moved to $trash and can be recovered."
+  say "If installed with Homebrew, run 'brew uninstall open-computer-use' to remove the package files."
+}
+
+usage() {
+  cat <<'EOF'
+Usage: open-computer-use <command>
+
+Commands:
+  setup [--non-interactive] [--skip-permissions]
+  doctor [--repair] [--deep] [--bundle-only]
+  permissions
+  start | stop | restart | status
+  warm-browser
+  preview <preview command ...>
+  driver <cua-driver arguments...>
+  uninstall
+  version
+EOF
+}
+
+command_name="${1:-help}"
+[ $# -eq 0 ] || shift
+case "$command_name" in
+  setup) setup_command "$@" ;;
+  doctor|repair) [ "$command_name" = repair ] && set -- --repair "$@"; doctor_command "$@" ;;
+  permissions) permissions_command "$@" ;;
+  start) start_command ;;
+  stop) stop_command ;;
+  restart) stop_command; start_command ;;
+  status) status_command ;;
+  warm-browser) warm_browser && ok "Chrome broker is warm and focus was restored" ;;
+  preview) exec "$BUNDLE_ROOT/bin/claude-cua-preview" "$@" ;;
+  driver) driver="$(driver_binary)" || die "Driver is not installed"; exec "$driver" "$@" ;;
+  uninstall) uninstall_command ;;
+  version|--version|-v) say "$VERSION" ;;
+  help|-h|--help) usage ;;
+  *) usage; die "Unknown command: $command_name" ;;
+esac
