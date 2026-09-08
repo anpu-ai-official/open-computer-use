@@ -203,11 +203,7 @@ async function ensureBrowserEndpoint() {
     const existing = await readDevToolsEndpoint();
     if (existing && await endpointAlive(existing)) return { endpoint: existing, broker: null };
 
-    const chrome = spawn("/usr/bin/open", [
-      "-n",
-      "-g",
-      CHROME_PATH,
-      "--args",
+    const chrome = spawn(CHROME_PATH, [
       "--headless=new",
       `--user-data-dir=${BROWSER_PROFILE}`,
       "--remote-debugging-port=0",

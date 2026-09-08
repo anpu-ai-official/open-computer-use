@@ -19,14 +19,19 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: runtime/package-lock.json
       - name: Install dependencies
-        run: make install-dev
+        run: |
+          make install-dev
+          cd runtime
+          npx playwright install chromium
+          browser_path="$(node -p "require('playwright').chromium.executablePath()")"
+          echo "CLAUDE_CUA_CHROME_PATH=$browser_path" >> "$GITHUB_ENV"
       - name: Install ShellCheck
         run: brew install shellcheck
       - name: Static checks

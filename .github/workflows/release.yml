@@ -28,10 +28,10 @@ jobs:
     env:
       RELEASE_VERSION: ${{ inputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -51,8 +51,15 @@ jobs:
           for value in "$P12_BASE64" "$P12_PASSWORD" "$CODESIGN_IDENTITY" "$APPLE_ID" "$APPLE_APP_PASSWORD" "$APPLE_TEAM_ID"; do
             test -n "$value" || { echo "A required Apple signing secret is missing" >&2; exit 1; }
           done
-      - name: Install and validate source dependencies
-        run: make install-dev && make check && make test
+      - name: Install source dependencies and test browser
+        run: |
+          make install-dev
+          cd runtime
+          npx playwright install chromium
+          browser_path="$(node -p "require('playwright').chromium.executablePath()")"
+          echo "CLAUDE_CUA_CHROME_PATH=$browser_path" >> "$GITHUB_ENV"
+      - name: Validate source and run component tests
+        run: make check && make test
       - name: Import Developer ID certificate
         env:
           P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
