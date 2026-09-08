@@ -36,12 +36,16 @@ function frontmost() {
 
 try {
   const before = frontmost();
-  const html = `<!doctype html><title>Preview fixture</title><style>body{margin:0;background:#151824;color:white;font:48px system-ui;display:grid;place-items:center;height:100vh}</style><main id="value">frame-0</main><script>let n=0;setInterval(()=>{n++;value.textContent='frame-'+n;document.body.style.background='hsl('+n*31+' 55% 22%)'},90)</script>`;
+  const html = `<!doctype html><title>Preview fixture</title><style>body{margin:0;background:#151824;color:white;font:48px system-ui;display:grid;place-items:center;height:100vh}</style><main id="value">frame-0</main>`;
   const url = `data:text/html,${encodeURIComponent(html)}`;
   const result = payload(await request("preview_regression", `
     let tab=await cua.createBrowserTab("chrome","about:blank",{inspectOnly:true});
     const started=await tab.preview.start({stream:"preview-regression",channel:"browser",fps:6,maxWidth:640,maxHeight:420,quality:55});
-    await tab.goto(${JSON.stringify(url)}); await new Promise(resolve=>setTimeout(resolve,1600));
+    await tab.goto(${JSON.stringify(url)});
+    for (let frame=1;frame<=6;frame++) {
+      await tab.evaluate(value=>{document.querySelector("#value").textContent="frame-"+value;document.body.style.background="hsl("+(value*31)+" 55% 22%)"},frame);
+      await new Promise(resolve=>setTimeout(resolve,350));
+    }
     const status=tab.preview.status(); const stopped=await tab.preview.stop(); await tab.close();
     nodeRepl.write(JSON.stringify({started,status,stopped,owned:(await cua.listTabs({emit:false})).length}));
   `));

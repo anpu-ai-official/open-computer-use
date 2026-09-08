@@ -7,7 +7,7 @@ Test host: Apple silicon, macOS 26.5.1, Claude Code 2.1.263, iTerm2 3.6.10, Goog
 - Archive: `open-computer-use-0.1.0-darwin-arm64.tar.gz`
 - Compressed size: approximately 50 MB.
 - SHA-256: recorded in the adjacent `.sha256` file and verified after the final build.
-- Bundles Node.js v22.23.2 arm64, Playwright 1.57.0, Acorn 8.15.0, the iTerm viewer, Claude integration files, and the patched driver app.
+- Bundles Node.js v22.23.2 arm64, Playwright 1.63.0, Acorn 8.18.0, the iTerm viewer, Claude integration files, and the patched driver app.
 - The release contains no machine-specific `/Users/...` path and no dependency on ChatGPT.app.
 
 ## Installer boundaries
