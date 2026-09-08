@@ -26,7 +26,11 @@ jobs:
           cache: npm
           cache-dependency-path: runtime/package-lock.json
       - name: Install dependencies
-        run: make install-dev
+        run: |
+          make install-dev
+          cd runtime
+          npx playwright install chromium
+          echo "CLAUDE_CUA_CHROME_PATH=$(node -e \"console.log(require('playwright').chromium.executablePath())\")" >> "$GITHUB_ENV"
       - name: Install ShellCheck
         run: brew install shellcheck
       - name: Static checks
