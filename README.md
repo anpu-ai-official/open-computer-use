@@ -9,6 +9,7 @@
 
 <p align="center">
   <a href="https://github.com/anpu-ai-official/open-computer-use/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/anpu-ai-official/open-computer-use/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/anpu-ai-official/open-computer-use/actions/workflows/linux-x11.yml"><img alt="Linux X11 E2E" src="https://github.com/anpu-ai-official/open-computer-use/actions/workflows/linux-x11.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-2563eb.svg"></a>
   <img alt="macOS Apple silicon" src="https://img.shields.io/badge/macOS-Apple%20silicon-111827.svg">
   <img alt="Claude Code" src="https://img.shields.io/badge/Claude%20Code-CLI-d97706.svg">
@@ -31,6 +32,8 @@ GUI agents are useful, but foreground automation interrupts typing, one browser 
 ## Quick start
 
 Supported today: Apple-silicon Mac, macOS 13+, Claude Code CLI, iTerm2 in `/Applications`, and Google Chrome in `/Applications`.
+
+Linux X11 is now continuously exercised as a development target on ARM64 and x86_64, including native background actions, four parallel native sessions, Chrome automation, and the full DevTools suite. The public Linux installer is still pending, so this is qualification evidence rather than a supported 0.1.0 release promise.
 
 Once a signed release is published:
 
@@ -65,8 +68,8 @@ flowchart LR
   G --> B[Persistent local broker]
   D --> B
   B -->|inactive owned tabs| Chrome[Running Chrome profile]
-  G -->|snapshot-bound commands| Driver[Background native driver]
-  Driver --> Apps[macOS app windows]
+  B -->|session-isolated native channel| Driver[Background native driver]
+  Driver --> Apps[Native app windows]
   B -. changed frames .-> PiP[iTerm2 PiP]
   Driver -. changed frames .-> PiP
   D --> Artifacts[HAR / trace / profiles / heap]
@@ -95,15 +98,16 @@ open-computer-use uninstall
 |---|---|---|
 | Chrome | Inactive new tabs in the existing profile, inherited cookies/logins/extensions, parallel sessions | Does not take control of tabs the user already had open |
 | Native macOS | AX inspection, exact-window actions, routed text/keys, screenshots, verification | Background delivery can be rejected across macOS Spaces |
+| Native Linux X11 (development) | AT-SPI inspection, exact-window background actions, parallel broker sessions, focus/pointer invariants | Installer not shipped; Wayland requires compositor-specific qualification |
 | DevTools | Network, storage, console, issues, Web Vitals, CPU, coverage, trace, heap, emulation | Target-owned diagnostics; no visible DevTools UI required |
 | Preview | Shared changed-frame PiP, pause/minimize/restore, terminal-safe capture | One shared latest-channel view in v0.1; no mosaic yet |
-| Browsers/platforms | Chrome on Apple-silicon macOS | Safari, Firefox, Intel Mac, Windows, and Linux are not yet supported |
+| Browsers/platforms | Chrome on Apple-silicon macOS; Chrome ARM64/x86_64 Linux test lanes | Safari and Firefox are out of scope for now; Intel Mac and Windows still need real-machine qualification |
 
 Browser tabs share the state of the chosen Chrome profile. That is a feature for authenticated work, not clean-room isolation. Use a dedicated Chrome profile when account separation matters.
 
 ## Quality bar
 
-The checked 0.1.0 development build passed isolated installation, Homebrew installation, parallel browser sessions, focus monitoring, teardown and rollback, Network/Application/Console diagnostics, Web Vitals, CPU and coverage profiling, tracing, heap capture, native background actions, and non-flickering iTerm preview tests. Full results and the remaining public-signing gate are in [TESTING.md](TESTING.md).
+The checked 0.1.0 development build passed isolated installation, Homebrew installation, parallel browser sessions, focus monitoring, teardown and rollback, Network/Application/Console diagnostics, Web Vitals, CPU and coverage profiling, tracing, heap capture, native background actions, non-flickering iTerm preview tests, and the Linux X11/Chrome matrix. Full results and the remaining public-signing and platform-packaging gates are in [TESTING.md](TESTING.md).
 
 ```bash
 make check

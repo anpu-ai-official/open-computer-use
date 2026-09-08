@@ -1,0 +1,24 @@
+name: Linux X11 E2E
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-x11-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  x86_64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build and run native plus Chrome E2E
+        run: |
+          OCU_LINUX_ARCH=amd64 scripts/test-linux-x11.sh

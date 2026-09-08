@@ -27,6 +27,7 @@ npm run test:live-browser
 npm run test:http-browser
 npm run test:http-devtools-stress
 npm run test:live-native
+scripts/test-linux-x11.sh
 ```
 
 Review the test source before running live tests. The suite creates temporary tabs/windows and should return ownership to zero.

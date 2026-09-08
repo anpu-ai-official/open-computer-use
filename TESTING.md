@@ -38,6 +38,22 @@ Test host: Apple silicon, macOS 26.5.1, Claude Code 2.1.263, iTerm2 3.6.10, Goog
 - Same-window terminal watcher used the AppleScript text-buffer path, observed typed text `NODE_WATCH_TYPED_9182`, advanced changed frames with zero capture errors, and excluded the preview pane by construction.
 - Parallel background native launches were verified without either target becoming foreground. When macOS placed a test window on another Space, the action was correctly reported as not background-addressable instead of moving Spaces.
 
+## Linux X11 and Chrome
+
+The checked-in `tests/platform/linux-x11` harness was run end to end on this Apple-silicon host through Docker's native Linux ARM64 VM:
+
+- Debian 12 ARM64, Xvfb/Openbox X11 desktop, AT-SPI session bus, Cua Driver 0.24.0, Node.js 22.23.2, and Google Chrome 152.0.7977.82.
+- Native GTK snapshot, background text insertion, background button action, and semantic postcondition readback passed while a separate sentinel window remained focused and the real pointer was unchanged.
+- Four independent native broker sessions simultaneously drove four different GTK windows in 301–340 ms across repeated runs; every result was isolated and focus/pointer invariants remained unchanged.
+- The broker's opaque-token compatibility layer was exercised against the real Linux daemon proxy. A separate deterministic fake-driver regression test checks the exact token-to-PID/window/snapshot/index translation.
+- Browser JavaScript persistence and parallel-session isolation passed. The full DevTools regression passed Network, Console, Application storage, CPU, JavaScript/CSS coverage, performance, trace, heap snapshot, heap sampling, cleanup, and resilience checks; all browser-owned tabs were closed.
+
+The GitHub Actions Linux lane runs the same image natively on x86_64. Linux X11 runtime qualification is distinct from a public Linux installer/release, which is not shipped by 0.1.0.
+
+## Claude Code native-channel regression
+
+After upgrading the installed skill and broker, Claude Code 2.1.263 dispatched two `gui-operator` subagents together. One used the new session-isolated native channel for an app inventory; the other created an inactive existing-profile Chrome tab, read “Example Domain,” closed it, and reported zero owned tabs. Both completed successfully. An external 200 ms monitor captured 408 samples with zero foreground transitions, Chrome never became foreground, and no agent tab was selected. The run cost was $0.3945 and returned only compact operator summaries to the dispatcher.
+
 ## Required public-release gate
 
 The checked local archive intentionally contains the existing development-signed driver so it can be exercised on this machine. Gatekeeper correctly reports that build as not notarized. Do not publish it as the production release.

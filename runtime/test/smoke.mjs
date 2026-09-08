@@ -32,7 +32,7 @@ try {
   if (initialized.serverInfo?.name !== "open-computer-use") throw new Error("bad initialize result");
 
   const listed = await request(2, "tools/list");
-  if (listed.tools?.map((tool) => tool.name).join(",") !== "js,js_reset")
+  if (listed.tools?.map((tool) => tool.name).join(",") !== "js,js_reset,native,native_reset")
     throw new Error("unexpected tools/list result");
 
   const first = await request(3, "tools/call", {

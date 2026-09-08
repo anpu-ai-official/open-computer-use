@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 import { parse } from "acorn";
 import { connectBrowser, setupBrowserSession } from "./browser-runtime.mjs";
 import { acceptPendingExternalConsent, prepareExistingProfileBroker } from "./existing-profile-broker.mjs";
+import { callNative, resetNative, shutdownNative } from "./native-runtime.mjs";
 
 const VERSION = "0.1.0";
 const SESSION_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
@@ -132,7 +133,7 @@ class BrowserSessionRuntime {
 const tools = [
   {
     name: "js",
-    description: "Run JavaScript in a persistent, session-isolated Chrome runtime. It attaches to the already-running user Chrome profile, creates only inactive session-owned tabs, and exposes compact browser automation plus tab.devtools profiling with file-backed artifacts. Each session owns its JS bindings, tab set, and ordered action stream. Use cua-driver for native apps.",
+    description: "Run JavaScript in a persistent, session-isolated Chrome runtime. It attaches to the already-running user Chrome profile, creates only inactive session-owned tabs, and exposes compact browser automation plus tab.devtools profiling with file-backed artifacts. Each session owns its JS bindings, tab set, and ordered action stream. Use the native tool for native apps.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -154,6 +155,30 @@ const tools = [
       properties: { session: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$" } },
     },
   },
+  {
+    name: "native",
+    description: "Call one native computer-use tool through a persistent, session-isolated cua-driver MCP channel. Snapshot tokens remain valid across calls in the same delegated session; different sessions can execute concurrently.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["session", "tool", "arguments"],
+      properties: {
+        session: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$" },
+        tool: { type: "string", pattern: "^[a-z][a-z0-9_]*$" },
+        arguments: { type: "object" },
+      },
+    },
+  },
+  {
+    name: "native_reset",
+    description: "Close one delegated native cua-driver channel and discard its snapshot state.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["session"],
+      properties: { session: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$" } },
+    },
+  },
 ];
 
 export async function handle(message) {
@@ -168,8 +193,16 @@ export async function handle(message) {
       const name = message.params?.name;
       const args = message.params?.arguments ?? {};
       const session = validateSession(args.session);
+      if (name === "native") {
+        if (typeof args.tool !== "string") throw new Error("native requires a tool name");
+        return await callNative(session, args.tool, args.arguments);
+      }
+      if (name === "native_reset") {
+        resetNative(session);
+        return { content: [{ type: "text", text: "Native computer-use session reset" }], isError: false };
+      }
       if (name === "js") {
-        if (args.surface != null && args.surface !== "browser") throw new Error("surface must be browser; use cua-driver for native apps");
+        if (args.surface != null && args.surface !== "browser") throw new Error("surface must be browser; use the native tool for native apps");
         if (typeof args.code !== "string" || !args.code.trim()) throw new Error("js requires non-empty code");
       } else if (name !== "js_reset") {
         throw new Error(`Unknown tool: ${name}`);
@@ -372,7 +405,10 @@ function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
 function write(message) { process.stdout.write(`${JSON.stringify(message)}\n`); }
 function rpcError(code, message) { return { code, message: String(message ?? "Unknown error") }; }
-export async function shutdown() { await Promise.allSettled([...sessions.values()].map(runtime => runtime.close())); }
+export async function shutdown() {
+  shutdownNative();
+  await Promise.allSettled([...sessions.values()].map(runtime => runtime.close()));
+}
 let terminating = false;
 async function terminate(code) {
   if (terminating) return;

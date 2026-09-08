@@ -5,13 +5,13 @@ description: Delegate native-app and browser UI work to focused operators. Ordin
 
 # Computer Use & Browser Use
 
-Delegate all GUI/browser execution and state inspection. Use `devtools-operator` for Chrome DevTools diagnosis: Network, Console, Issues, Application/storage, Web Vitals, traces, CPU, JavaScript/CSS coverage, heap, or throttling. Use `gui-operator` for all other browser and native UI work. Browser work uses a persistent Codex-shaped `js`/`js_reset` runtime; native work uses separate packaged-driver CLI connections to its persistent daemon. The dispatcher must not call browser/native MCP tools or ingest accessibility trees, screenshots, app inventories, window inventories, DOM dumps, HARs, traces, heap snapshots, or profiles. Its job is preview setup, dispatch, and synthesis from concise operator results. A test harness may make a one-line, read-only frontmost-app identity check, but never broad GUI discovery.
+Delegate all GUI/browser execution and state inspection. Use `devtools-operator` for Chrome DevTools diagnosis: Network, Console, Issues, Application/storage, Web Vitals, traces, CPU, JavaScript/CSS coverage, heap, or throttling. Use `gui-operator` for all other browser and native UI work. Browser work uses a persistent Codex-shaped `js`/`js_reset` runtime; native work uses the same broker's persistent session-isolated `native` channel. The dispatcher must not call browser/native MCP tools or ingest accessibility trees, screenshots, app inventories, window inventories, DOM dumps, HARs, traces, heap snapshots, or profiles. Its job is preview setup, dispatch, and synthesis from concise operator results. A test harness may make a one-line, read-only frontmost-app identity check, but never broad GUI discovery.
 
 When the parent Claude session runs in iTerm, start one shared in-tab preview before dispatching unless the user asked to disable it. Read [references/iterm-preview.md](references/iterm-preview.md) for the one-command setup and pass its stream name to every operator. The pane is minimizable, never becomes the active source pane, and receives only file-backed local frames—not model-visible screenshots.
 
 ## Dispatch
 
-Create a short unique session ID using only letters, digits, `_`, and `-`. Include it in the prompt and require the operator to pass it unchanged to every browser `js`/`js_reset` call or native cua-driver call.
+Create a short unique session ID using only letters, digits, `_`, and `-`. Include it in the prompt and require the operator to pass it unchanged to every browser `js`/`js_reset` call and every `native`/`native_reset` call.
 
 ```text
 Agent({
@@ -47,6 +47,6 @@ Browser tools: `mcp__open-computer-use__js` and `mcp__open-computer-use__js_rese
 
 The normal browser transport is the persistent local HTTP MCP at `http://127.0.0.1:17840/mcp`. Its long-lived broker owns one Chrome 144+ agent auto-connect/Playwright connection and multiplexes every operator session over it, so a fresh Claude CLI process does not reconnect Chrome or trigger debugger-consent focus. If the HTTP broker is unavailable, return `persistent_browser_broker_unavailable`; do not start a per-task stdio bridge, launch another Chrome/profile, attach through the stock Playwright extension, or change focus. Headless mode exists only for explicit component tests through `CLAUDE_CUA_BROWSER_MODE=headless`.
 
-Native runtime: `Bash` calls shaped as `"$HOME/.local/bin/open-computer-use" driver <tool> '<JSON>'`. Separate CLI connections can run concurrently against the packaged daemon.
+Native runtime: `mcp__open-computer-use__native` with `{session, tool, arguments}`. The broker owns one long-lived cua-driver MCP channel per delegated session, serializes calls within that session, and runs different sessions concurrently. It preserves snapshot-token validity across calls and compensates for driver proxy transports that otherwise invalidate opaque tokens. End native work with `mcp__open-computer-use__native_reset` for that session.
 
-The persistent browser MCP is managed by the `open-computer-use` installation. If it is unavailable, run `"$HOME/.local/bin/open-computer-use" doctor --repair` and report any remaining failed check.
+The persistent Open Computer Use MCP is managed by the installation. If it is unavailable, run `"$HOME/.local/bin/open-computer-use" doctor --repair` and report any remaining failed check.

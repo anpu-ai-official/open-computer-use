@@ -18,6 +18,7 @@
     "test:preview": "CLAUDE_CUA_BROWSER_MODE=headless node test/preview.mjs",
     "test:preview-viewer": "node test/preview-viewer.mjs",
     "test:live-native": "node test/live-native.mjs",
+    "test:native-runtime": "node test/native-runtime.mjs",
     "test:teardown": "CLAUDE_CUA_BROWSER_MODE=headless node test/teardown.mjs"
   },
   "dependencies": {
