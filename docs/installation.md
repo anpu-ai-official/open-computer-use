@@ -3,7 +3,7 @@
 ## Requirements
 
 - Apple-silicon Mac (`arm64`) running macOS 13 or newer
-- Claude Code CLI installed and authenticated
+- Either Google Antigravity CLI (`agy`) or Claude Code CLI (`claude`) installed and authenticated (both supported)
 - iTerm2 installed at `/Applications/iTerm.app`
 - Google Chrome installed at `/Applications/Google Chrome.app`
 
@@ -48,9 +48,16 @@ Extract the generated archive and run its setup command. For isolated installer 
 
 ## Upgrades and migration
 
-Running the installer again places the new immutable bundle next to the old one and atomically updates `current`. Setup migrates the earlier `claude-computer-use` command, MCP registration, managed skill marker, driver app, and LaunchAgent names.
+Running the installer again places the new immutable bundle next to the old one and atomically updates `current`. Setup installs the agy skill with its operator guides and helper under `~/.gemini/config/skills/computer-use`, installs the Claude Code skill and agents under `~/.claude`, registers agy's lightweight stdio proxy and Claude Code's direct HTTP endpoint (`http://127.0.0.1:17840/mcp`), and migrates earlier commands, driver app, and LaunchAgent names.
 
-Existing user-authored Claude skills or agents are moved to timestamped backups before managed files are installed. The installer refuses to kill an unknown process occupying the broker port.
+Launch agy normally and ask it to use `computer-use`. The skill delegates each operation to a built-in `self` subagent, which reads the installed operator guide and calls the broker through the bundled helper; it does not depend on custom-agent discovery.
+
+Setup can be configured via environment variables:
+- `OCU_AGY_CONFIG`: Target Antigravity configuration directory (defaults to `~/.gemini/config`).
+- `OCU_SKIP_AGY=1`: Skip Antigravity skills, operators, and MCP registration.
+- `OCU_SKIP_CLAUDE=1`: Skip Claude Code skills, agents, and MCP registration.
+
+Existing user-authored skills or agents in either assistant's configuration are moved to timestamped backups before managed files are installed. The installer refuses to kill an unknown process occupying the broker port.
 
 ## Uninstall
 
@@ -58,4 +65,4 @@ Existing user-authored Claude skills or agents are moved to timestamped backups 
 open-computer-use uninstall
 ```
 
-Managed integrations and a direct-install bundle are moved to `~/.Trash/OpenComputerUse-<timestamp>` so they can be recovered. Homebrew users should then run `brew uninstall open-computer-use` to remove the Cellar package.
+Managed integrations (including agy and Claude skills, Claude operators, MCP registrations, and command symlinks) and a direct-install bundle are moved to `~/.Trash/OpenComputerUse-<timestamp>-<pid>` so they can be recovered. Homebrew users should then run `brew uninstall open-computer-use` to remove the Cellar package.

@@ -6,7 +6,7 @@ install-dev:
 	cd runtime && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci --ignore-scripts
 
 check:
-	bash -n install.sh bin/* packaging/*.sh scripts/*.sh
+	bash -n install.sh bin/* packaging/*.sh scripts/*.sh tests/*.sh
 	ruby -c Formula/open-computer-use.rb.in
 	plutil -lint packaging/Info.plist packaging/CuaDriver.entitlements share/launchd/*.plist.in
 	node --check runtime/server.mjs
@@ -14,7 +14,11 @@ check:
 	node --check runtime/devtools-runtime.mjs
 	node --check runtime/native-runtime.mjs
 	node --check runtime/iterm-preview.mjs
+	node --check runtime/stdio-proxy.mjs
+	node --check share/agy/skills/computer-use/scripts/ocu-call.mjs
 	python3 scripts/validate-skill.py share/claude/skills/computer-use
+	python3 scripts/validate-skill.py share/agy/skills/computer-use
+	bash tests/test_agy_integration.sh
 	python3 scripts/check-repository.py
 
 test:
@@ -23,6 +27,8 @@ test:
 	cd runtime && npm run test:resilience
 	cd runtime && npm run test:preview
 	cd runtime && npm run test:preview-viewer
+	cd runtime && npm run test:stdio-proxy
+	cd runtime && npm run test:agy-helper
 	cd runtime && npm run test:native-runtime
 	cd runtime && npm run test:teardown
 

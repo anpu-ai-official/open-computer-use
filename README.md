@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  Background browser and native macOS automation for Claude Code.<br>
+  Background browser and native macOS automation for agy CLI and Claude Code.<br>
   Parallel agents. Your Chrome profile. No stolen focus. Live iTerm2 preview.
 </p>
 
@@ -12,6 +12,7 @@
   <a href="https://github.com/anpu-ai-official/open-computer-use/actions/workflows/linux-x11.yml"><img alt="Linux X11 E2E" src="https://github.com/anpu-ai-official/open-computer-use/actions/workflows/linux-x11.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-2563eb.svg"></a>
   <img alt="macOS Apple silicon" src="https://img.shields.io/badge/macOS-Apple%20silicon-111827.svg">
+  <img alt="agy CLI" src="https://img.shields.io/badge/agy-CLI-10b981.svg">
   <img alt="Claude Code" src="https://img.shields.io/badge/Claude%20Code-CLI-d97706.svg">
 </p>
 
@@ -23,15 +24,15 @@
 GUI agents are useful, but foreground automation interrupts typing, one browser per worker wastes memory and loses your sessions, and raw screenshots quickly consume the parent agent's context. Open Computer Use takes a different approach:
 
 - **Actually backgrounded.** Browser tabs are created inactive in your already-running Chrome profile. Native input is routed to an exact PID and window without activating it.
-- **Parallel by design.** A persistent local broker multiplexes isolated sessions so Claude Code subagents can work concurrently.
+- **Parallel by design.** A persistent local broker multiplexes isolated sessions so agy CLI or Claude Code subagents can work concurrently.
 - **Context-efficient.** Operators receive the detailed accessibility, network, trace, and screenshot data. The dispatcher gets concise findings and file-backed artifacts.
 - **Expert browser diagnostics.** Network/HAR, Console, Application storage, Web Vitals, CPU profiles, JS/CSS coverage, traces, heap snapshots, and throttling are exposed on the owned tab.
 - **Visible when you want it.** A minimizable picture-in-picture pane inside the originating iTerm2 tab shows deduplicated frames without sending them to the model.
-- **Self-contained releases.** The archive bundles the runtime, patched native driver, Node.js, Playwright library, Claude skill, operators, preview, and doctor.
+- **Self-contained releases.** The archive bundles the runtime, patched native driver, Node.js, Playwright library, agy/Claude skills, operators, preview, and doctor.
 
 ## Quick start
 
-Supported today: Apple-silicon Mac, macOS 13+, Claude Code CLI, iTerm2 in `/Applications`, and Google Chrome in `/Applications`.
+Supported today: Apple-silicon Mac, macOS 13+, agy CLI or Claude Code CLI, iTerm2 in `/Applications`, and Google Chrome in `/Applications`.
 
 Linux X11 is now continuously exercised as a development target on ARM64 and x86_64, including native background actions, four parallel native sessions, Chrome automation, and the full DevTools suite. The public Linux installer is still pending, so this is qualification evidence rather than a supported 0.1.0 release promise.
 
@@ -43,14 +44,22 @@ open-computer-use permissions
 open-computer-use doctor --deep
 ```
 
-The installer is per-user and does not need `sudo`. macOS still requires the logged-in user to approve Accessibility, Screen Recording, and sometimes iTerm2 Automation; root cannot silently grant those permissions.
+The installer is per-user and does not need `sudo`. It automatically detects and configures both the agy CLI (`~/.gemini/config`) and Claude Code (`~/.claude`), registering the persistent local MCP broker with each. macOS still requires the logged-in user to approve Accessibility, Screen Recording, and sometimes iTerm2 Automation; root cannot silently grant those permissions.
 
-Then ask Claude Code naturally:
+Then ask agy CLI or Claude Code naturally:
 
 ```text
 Use computer-use to compare these three authenticated dashboards in parallel,
 leave my current Chrome tab and foreground app untouched, and show the shared preview.
 ```
+
+For non-interactive agy runs:
+
+```bash
+agy -p "Use computer-use to compare these three authenticated dashboards in parallel"
+```
+
+Add agy's `--dangerously-skip-permissions` flag only when you intentionally want non-interactive approval of every tool action.
 
 For browser diagnostics:
 
@@ -63,7 +72,7 @@ requests and hottest JavaScript functions, save the trace, and summarize fixes.
 
 ```mermaid
 flowchart LR
-  C[Claude Code dispatcher] -->|delegates concise brief| G[GUI operator]
+  C["agy CLI / Claude Code dispatcher"] -->|delegates concise brief| G[GUI operator]
   C -->|delegates diagnostic brief| D[DevTools operator]
   G --> B[Persistent local broker]
   D --> B

@@ -3,11 +3,12 @@
 ## Repository layout
 
 - `runtime/`: persistent MCP, browser facade, DevTools adapter, preview runtime, and tests
-- `share/claude/`: dispatcher skill plus isolated GUI and DevTools operators
+- `share/claude/`: dispatcher skill plus isolated GUI and DevTools operators for Claude Code
+- `share/agy/`: dispatcher skill plus operator guides and broker-call helper for Google Antigravity
 - `packaging/`: driver build, release assembly, signing metadata, and formula renderer
 - `patches/`: pinned upstream Cua changes and license notice
 - `bin/`: management CLI and internal preview launcher
-- `scripts/`: repository and isolated-install checks
+- `scripts/`: repository, skill/agent validation, and isolated-install checks
 
 ## Local checks
 
@@ -42,12 +43,13 @@ CUA_DRIVER_APP_SOURCE=/absolute/path/to/OpenComputerUseDriver.app packaging/buil
 
 The public release gate is stricter: the driver must be Developer ID-signed, notarized, and stapled. Never publish the local development artifact.
 
-## Skill changes
+## Skill and agent changes
 
-The dispatcher is intentionally short; detailed protocols belong in its references and operator files. Validate it with:
+The dispatcher is intentionally short; detailed protocols belong in its references and operator files. Validate skills and agents with:
 
 ```bash
 python3 scripts/validate-skill.py share/claude/skills/computer-use
+python3 scripts/validate-skill.py share/agy/skills/computer-use
 ```
 
 Keep the root agent delegate-only. Browser accessibility trees, screenshots, and raw diagnostic payloads belong in isolated operator context, not the dispatcher.

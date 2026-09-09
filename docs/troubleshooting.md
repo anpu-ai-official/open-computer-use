@@ -23,10 +23,22 @@ The runtime uses the profile of the already-running Chrome instance. Switch Chro
 
 Background input may be unavailable when the target window is on another macOS Space, minimized, or implemented with controls that do not expose usable accessibility actions. Move the window to the current Space without focusing it, unminimize it, and retry. The operator intentionally does not fall back to foreground input.
 
+## Assistant cannot find skill or operators
+
+Ensure `open-computer-use setup` or `open-computer-use doctor --repair` completed without errors.
+- For **Google Antigravity (`agy`)**:
+  - Verify `~/.gemini/config/skills/computer-use/SKILL.md` exists and contains the `.open-computer-use-managed` marker.
+  - Verify `~/.gemini/config/skills/computer-use/references/gui-operator.md`, `references/devtools-operator.md`, and `scripts/ocu-call.mjs` exist.
+  - Run `agy mcp list` to ensure `open-computer-use` is registered.
+- For **Claude Code (`claude`)**:
+  - Verify `~/.claude/skills/computer-use/SKILL.md` exists.
+  - Verify `~/.claude/agents/gui-operator.md` and `devtools-operator.md` exist.
+  - Run `claude mcp list` to ensure `open-computer-use` is registered.
+
 ## Preview is blank or missing
 
-Verify iTerm2 is in `/Applications`, then run `open-computer-use preview probe`. Approve the iTerm2 Automation prompt if macOS shows it. The preview is only created when Claude Code is running inside iTerm2 and `ITERM_SESSION_ID` is present.
+Verify iTerm2 is in `/Applications`, then run `open-computer-use preview probe`. Approve the iTerm2 Automation prompt if macOS shows it. The preview is only created when running inside iTerm2 with `ITERM_SESSION_ID` present.
 
 ## Collecting a report
 
-Include the output of `open-computer-use doctor --deep`, macOS/Chrome/iTerm2/Claude Code versions, reproduction steps, and redacted broker logs. Never attach raw HAR, storage, heap, or trace artifacts without reviewing them for credentials and personal data.
+Include the output of `open-computer-use doctor --deep`, macOS/Chrome/iTerm2/assistant (`agy` or Claude Code) versions, reproduction steps, and redacted broker logs. Never attach raw HAR, storage, heap, or trace artifacts without reviewing them for credentials and personal data.

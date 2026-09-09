@@ -1,5 +1,5 @@
 class OpenComputerUse < Formula
-  desc "Parallel background browser and native computer use for Claude Code"
+  desc "Parallel background browser and native computer use for agy CLI and Claude Code"
   homepage "@@HOMEPAGE@@"
   url "@@URL@@"
   sha256 "@@SHA256@@"
