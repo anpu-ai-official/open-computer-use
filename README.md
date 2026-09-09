@@ -17,7 +17,7 @@
 </p>
 
 > [!IMPORTANT]
-> Open Computer Use is in public preview. The source and release pipeline are ready; the one-line installer becomes available with the first Developer ID-signed and notarized GitHub release. See [Installation](docs/installation.md) for the current options.
+> Open Computer Use is in public preview. macOS releases are ad-hoc signed, free, and do not expire. Because Apple has not identified or notarized the developer, macOS may require one **Open Anyway** approval on first launch. See [Installation](docs/installation.md).
 
 ## Why it exists
 
@@ -36,7 +36,7 @@ Supported today: Apple-silicon Mac, macOS 13+, agy CLI or Claude Code CLI, iTerm
 
 Linux X11 is now continuously exercised as a development target on ARM64 and x86_64, including native background actions, four parallel native sessions, Chrome automation, and the full DevTools suite. The public Linux installer is still pending, so this is qualification evidence rather than a supported 0.1.0 release promise.
 
-Once a signed release is published:
+Install the latest release:
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/anpu-ai-official/open-computer-use/main/install.sh)"
@@ -116,7 +116,7 @@ Browser tabs share the state of the chosen Chrome profile. That is a feature for
 
 ## Quality bar
 
-The checked 0.1.0 development build passed isolated installation, Homebrew installation, parallel browser sessions, focus monitoring, teardown and rollback, Network/Application/Console diagnostics, Web Vitals, CPU and coverage profiling, tracing, heap capture, native background actions, non-flickering iTerm preview tests, and the Linux X11/Chrome matrix. Full results and the remaining public-signing and platform-packaging gates are in [TESTING.md](TESTING.md).
+The checked 0.1.0 build passed isolated installation, Homebrew installation, parallel browser sessions, focus monitoring, teardown and rollback, Network/Application/Console diagnostics, Web Vitals, CPU and coverage profiling, tracing, heap capture, native background actions, non-flickering iTerm preview tests, and the Linux X11/Chrome matrix. Full results and platform-packaging gates are in [TESTING.md](TESTING.md).
 
 ```bash
 make check

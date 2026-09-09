@@ -338,7 +338,7 @@ doctor_command() {
   else
     signature_info="$(/usr/bin/codesign -dv --verbose=4 "$BUNDLE_ROOT/libexec/driver/OpenComputerUseDriver.app" 2>&1 || true)"
     if printf '%s' "$signature_info" | grep -q 'Signature=adhoc'; then
-      check_line warn "Development driver is ad-hoc signed and not notarized"
+      check_line warn "Driver is ad-hoc signed and not notarized; first launch may require Open Anyway"
     else
       check_line fail "Driver is not notarized or accepted by Gatekeeper"
     fi

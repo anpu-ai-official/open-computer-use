@@ -32,5 +32,5 @@ mkdir -p "$(dirname "$OUTPUT")"
 /usr/bin/ditto "$app" "$OUTPUT"
 echo "Built $OUTPUT"
 if [ "$identity" = - ]; then
-  echo "This is an ad-hoc development signature. Public archives must use Developer ID and Apple notarization." >&2
+  echo "This is an ad-hoc signature. It does not expire, but browser-downloaded copies may require one-time Gatekeeper approval." >&2
 fi

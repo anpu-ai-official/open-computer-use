@@ -4,7 +4,7 @@ Open Computer Use is deliberately narrow in v0.1: make one Mac/Claude Code/iTerm
 
 ## Near term
 
-- Developer ID-signed and notarized v0.1 release
+- Optional Developer ID signing and notarization for a smoother first-launch and upgrade experience
 - Per-channel preview pinning and an optional multi-agent mosaic
 - Descendant-target support for OOPIFs, workers, and service workers
 - Richer trace interpretation and request-chain findings

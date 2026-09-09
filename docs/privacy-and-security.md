@@ -4,7 +4,7 @@ Open Computer Use runs locally, but computer-use data can be sensitive. This doc
 
 ## Local interfaces
 
-The MCP broker binds to `127.0.0.1` and does not intentionally expose a network service outside the Mac. The LaunchAgent runs as the logged-in user. Release archives are protected by GitHub transport plus a published SHA-256 checksum; the native app is Developer ID-signed and notarized.
+The MCP broker binds to `127.0.0.1` and does not intentionally expose a network service outside the Mac. The LaunchAgent runs as the logged-in user. Release archives are protected by GitHub transport plus a published SHA-256 checksum. The native app has an internally verifiable ad-hoc signature, but it is not tied to an Apple-verified developer identity and is not notarized. Users should download only from this repository and verify the published checksum.
 
 The runtime itself does not call Anthropic or OpenAI APIs. Claude Code still sends the operator prompts and selected results according to Claude Code's own configuration and consumes the user's normal model allowance.
 

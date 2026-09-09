@@ -41,7 +41,7 @@ cp "$BUILD_ROOT/${node_archive%.tar.gz}/LICENSE" "$stage/libexec/node/LICENSE"
 
 if [ -z "$DRIVER_SOURCE" ]; then
   echo "Set CUA_DRIVER_APP_SOURCE to the patched CuaDriver app to include in this release." >&2
-  echo "For public releases, build patches/cua-driver-existing-profile.patch at the pinned Cua commit, then Developer-ID sign and notarize it." >&2
+  echo "Build it with packaging/build-driver.sh (ad-hoc by default) or provide a Developer ID-signed build." >&2
   exit 1
 fi
 [ -d "$DRIVER_SOURCE" ] || { echo "Driver app not found: $DRIVER_SOURCE" >&2; exit 1; }

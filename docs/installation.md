@@ -9,15 +9,17 @@
 
 Chrome should already be running when you first use browser automation. Open Computer Use creates inactive tabs in that same profile and inherits its cookies, extensions, and authenticated sessions.
 
-## Signed release
+## GitHub release
 
-When the first signed release is available, install the latest version with:
+Install the latest version with:
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/anpu-ai-official/open-computer-use/main/install.sh)"
 ```
 
 The bootstrap downloads the matching release archive and checksum from GitHub, verifies SHA-256, installs a versioned bundle under `~/Library/Application Support/OpenComputerUse`, switches the `current` symlink, and runs setup. It does not invoke `sudo`.
+
+The bundled native driver is ad-hoc signed. The signature has no subscription or expiry, but it is not an Apple Developer ID signature and the app is not notarized. If macOS blocks `~/Applications/OpenComputerUseDriver.app` on first launch, try to open it once, then go to **System Settings → Privacy & Security → Open Anyway**. Rerun the permissions command afterward. Do not disable Gatekeeper globally.
 
 Then complete Apple's approvals and verify everything:
 
@@ -38,7 +40,7 @@ open-computer-use doctor --deep
 
 ## Development installation
 
-Development archives require a patched driver app. They are intentionally not suitable for public distribution unless the app is Developer ID-signed and notarized.
+Development archives require a patched driver app. `packaging/build-driver.sh` creates the same ad-hoc-signed driver used by the free GitHub release unless `APPLE_CODESIGN_IDENTITY` selects a Developer ID certificate.
 
 ```bash
 CUA_DRIVER_APP_SOURCE=/absolute/path/to/OpenComputerUseDriver.app packaging/build-release.sh

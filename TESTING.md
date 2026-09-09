@@ -54,10 +54,10 @@ The GitHub Actions Linux lane runs the same image natively on x86_64. Linux X11 
 
 After upgrading the installed skill and broker, Claude Code 2.1.263 dispatched two `gui-operator` subagents together. One used the new session-isolated native channel for an app inventory; the other created an inactive existing-profile Chrome tab, read “Example Domain,” closed it, and reported zero owned tabs. Both completed successfully. An external 200 ms monitor captured 408 samples with zero foreground transitions, Chrome never became foreground, and no agent tab was selected. The run cost was $0.3945 and returned only compact operator summaries to the dispatcher.
 
-## Required public-release gate
+## Public-release gate
 
-The checked local archive intentionally contains the existing development-signed driver so it can be exercised on this machine. Gatekeeper correctly reports that build as not notarized. Do not publish it as the production release.
+The checked local archive contains an ad-hoc-signed driver. Its code signature is internally valid and does not expire, while Gatekeeper correctly reports that it is not notarized.
 
-The release workflow rebuilds the driver from the pinned Cua commit plus this repository's patch, signs it with the maintainer's Developer ID Application certificate, submits it to Apple notarization, staples the ticket, rebuilds the archive, reruns the isolated installer test, and only then publishes. Configure the workflow's Apple signing/notarization secrets before creating `v0.1.0`.
+The release workflow rebuilds the driver from the pinned Cua commit plus this repository's patch, ad-hoc signs it, verifies both the signature and expected Gatekeeper result, rebuilds the archive, reruns the isolated installer test, and only then publishes. It requires no Apple signing secrets. Users may need to choose **Open Anyway** once after installation, and driver-changing upgrades may require renewed privacy approvals.
 
 macOS Accessibility, Screen Recording, and iTerm Automation remain explicit user approvals. `sudo` cannot grant them.

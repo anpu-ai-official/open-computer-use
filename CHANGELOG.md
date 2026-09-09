@@ -16,6 +16,7 @@ All notable changes are documented here. The project follows [Semantic Versionin
 - Network, Console, Application, performance, CPU, coverage, trace, heap, and emulation diagnostics.
 - Deduplicated minimizable iTerm2 picture-in-picture preview.
 - Self-contained installer, Homebrew formula renderer, doctor, repair, migration, and uninstall flows.
+- Free, non-expiring ad-hoc-signed macOS releases with documented first-launch Gatekeeper approval.
 - Public project documentation, governance, issue forms, CI, and release validation.
 - `open-computer-use` and `ocu` command names with migration aliases for earlier development builds.
 

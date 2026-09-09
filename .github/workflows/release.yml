@@ -10,7 +10,7 @@ on:
       prerelease:
         description: Mark the GitHub release as a prerelease
         required: true
-        default: true
+        default: false
         type: boolean
 
 permissions:
@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   darwin-arm64:
-    name: Sign, notarize, test, and publish
+    name: Ad-hoc sign, test, and publish
     runs-on: macos-15
     timeout-minutes: 60
     env:
@@ -37,20 +37,10 @@ jobs:
           cache: npm
           cache-dependency-path: runtime/package-lock.json
       - name: Validate release request
-        env:
-          P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
-          P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
-          CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           test "$(uname -m)" = arm64
           test "$(tr -d '[:space:]' < VERSION)" = "$RELEASE_VERSION"
           git rev-parse "v$RELEASE_VERSION" >/dev/null 2>&1 && { echo "Tag already exists" >&2; exit 1; } || true
-          for value in "$P12_BASE64" "$P12_PASSWORD" "$CODESIGN_IDENTITY" "$APPLE_ID" "$APPLE_APP_PASSWORD" "$APPLE_TEAM_ID"; do
-            test -n "$value" || { echo "A required Apple signing secret is missing" >&2; exit 1; }
-          done
       - name: Install source dependencies and test browser
         run: |
           make install-dev
@@ -60,34 +50,20 @@ jobs:
           echo "CLAUDE_CUA_CHROME_PATH=$browser_path" >> "$GITHUB_ENV"
       - name: Validate source and run component tests
         run: make check && make test
-      - name: Import Developer ID certificate
+      - name: Build ad-hoc-signed patched driver
         env:
-          P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
-          P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
-        run: |
-          security create-keychain -p temporary "$RUNNER_TEMP/open-computer-use.keychain-db"
-          security default-keychain -s "$RUNNER_TEMP/open-computer-use.keychain-db"
-          security unlock-keychain -p temporary "$RUNNER_TEMP/open-computer-use.keychain-db"
-          printf '%s' "$P12_BASE64" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
-          security import "$RUNNER_TEMP/certificate.p12" -k "$RUNNER_TEMP/open-computer-use.keychain-db" -P "$P12_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k temporary "$RUNNER_TEMP/open-computer-use.keychain-db"
-      - name: Build patched driver
-        env:
-          APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
+          APPLE_CODESIGN_IDENTITY: '-'
           CUA_DRIVER_OUTPUT: ${{ runner.temp }}/OpenComputerUseDriver.app
           OCU_VERSION: ${{ inputs.version }}
         run: packaging/build-driver.sh
-      - name: Notarize and staple driver
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Verify ad-hoc signature
         run: |
-          ditto -c -k --keepParent "$RUNNER_TEMP/OpenComputerUseDriver.app" "$RUNNER_TEMP/driver.zip"
-          xcrun notarytool submit "$RUNNER_TEMP/driver.zip" --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
-          xcrun stapler staple "$RUNNER_TEMP/OpenComputerUseDriver.app"
           codesign --verify --deep --strict "$RUNNER_TEMP/OpenComputerUseDriver.app"
-          spctl --assess --type execute "$RUNNER_TEMP/OpenComputerUseDriver.app"
+          codesign -dv --verbose=4 "$RUNNER_TEMP/OpenComputerUseDriver.app" 2>&1 | grep -q 'Signature=adhoc'
+          if spctl --assess --type execute "$RUNNER_TEMP/OpenComputerUseDriver.app"; then
+            echo "Expected the free release to require Gatekeeper approval" >&2
+            exit 1
+          fi
       - name: Build self-contained release
         env:
           OCU_VERSION: ${{ inputs.version }}
@@ -115,9 +91,6 @@ jobs:
         run: |
           prerelease_flag=()
           if [ "${{ inputs.prerelease }}" = true ]; then prerelease_flag=(--prerelease); fi
-          gh release create "v$RELEASE_VERSION" dist/* --target main --generate-notes "${prerelease_flag[@]}"
-      - name: Remove temporary signing material
-        if: always()
-        run: |
-          rm -f "$RUNNER_TEMP/certificate.p12" "$RUNNER_TEMP/driver.zip"
-          security delete-keychain "$RUNNER_TEMP/open-computer-use.keychain-db" >/dev/null 2>&1 || true
+          gh release create "v$RELEASE_VERSION" dist/* --target main --generate-notes \
+            --notes "This is a free, ad-hoc-signed macOS release. It does not expire. If macOS blocks Open Computer Use Driver on first launch, open System Settings > Privacy & Security and choose Open Anyway, then rerun open-computer-use permissions." \
+            "${prerelease_flag[@]}"

@@ -33,15 +33,16 @@ scripts/test-linux-x11.sh
 
 Review the test source before running live tests. The suite creates temporary tabs/windows and should return ownership to zero.
 
-## Building a development archive
+## Building a release archive
 
-Build the patched driver first or provide an existing development-signed app:
+Build the patched driver with its default ad-hoc signature, then assemble the archive:
 
 ```bash
-CUA_DRIVER_APP_SOURCE=/absolute/path/to/OpenComputerUseDriver.app packaging/build-release.sh
+CUA_DRIVER_OUTPUT=/tmp/OpenComputerUseDriver.app packaging/build-driver.sh
+CUA_DRIVER_APP_SOURCE=/tmp/OpenComputerUseDriver.app packaging/build-release.sh
 ```
 
-The public release gate is stricter: the driver must be Developer ID-signed, notarized, and stapled. Never publish the local development artifact.
+The GitHub workflow repeats this process from a clean checkout, verifies the ad-hoc signature, tests the isolated archive, and publishes the checksum. Local artifacts are for testing; publish only workflow-built assets.
 
 ## Skill and agent changes
 
